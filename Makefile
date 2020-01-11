@@ -4,7 +4,7 @@ CXX=/Users/erive/Downloads/raspbian10/bin/arm-raspbian10-linux-gnueabihf-g++
 DEPS_CFLAGS=-Iinclude -Iinclude/opencv -Iinclude -std=c++17 
 DEPS_LIBS=-Llib -lwpilibc -lwpiHal -lcameraserver -lntcore -lcscore -lopencv_dnn -lopencv_highgui -lopencv_ml -lopencv_objdetect -lopencv_shape -lopencv_stitching -lopencv_superres -lopencv_videostab -lopencv_calib3d -lopencv_videoio -lopencv_imgcodecs -lopencv_features2d -lopencv_video -lopencv_photo -lopencv_imgproc -lopencv_flann -lopencv_core -lwpiutil -latomic
 
-EXE=multiCameraServerExample
+EXE=GodsEye
 DESTDIR?=/home/pi/
 
 .PHONY: clean build install
