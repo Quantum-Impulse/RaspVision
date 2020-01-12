@@ -11,9 +11,9 @@
 #include <vector>
 #include <iostream>
 #include <cmath>
+#include <filesystem>
 
 #include <networktables/NetworkTableInstance.h>
-
 #include <vision/VisionPipeline.h>
 #include <vision/VisionRunner.h>
 
@@ -327,18 +327,19 @@ int main(int argc, char* argv[]) {
   if (cameras.size() >= 1) {
     std::thread([&] {
 
-       frc::VisionRunner<MyPipeline> runner(cameras[0], new MyPipeline(),
-                                            [&](MyPipeline &pipeline) {
-         // do something with pipeline results
-      });
+      //  frc::VisionRunner<MyPipeline> runner(cameras[0], new MyPipeline(),
+      //                                       [&](MyPipeline &pipeline) {
+      //    // do something with pipeline results
+      // });
 
       // something like this for GRIP:
-      // frc::VisionRunner<grip::FilterAndProcess> runner(cameras[0], new grip::FilterAndProcess(),
-      //                                      [&](grip::FilterAndProcess& pipeline) {
-        
+      frc::VisionRunner<grip::FilterAndProcess> runner(cameras[0], new grip::FilterAndProcess(),
+                                           [&](grip::FilterAndProcess &pipeline) {
+        //do something with pipeline results
         //const auto& contours = *pipeline.GetFindContoursOutput();
 
-      //});
+
+      });
        
       runner.RunForever();
     }).detach();
