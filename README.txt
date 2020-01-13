@@ -1,6 +1,6 @@
-#=======================
-#Building locally on rPi
-#=======================
+# =======================
+# Building locally on rPi
+# =======================
 
 1) Run "make"
 2) Run "make install" (replaces /home/pi/runCamera)
