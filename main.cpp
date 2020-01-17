@@ -320,17 +320,17 @@ int imageHeight = 144;
 double centerX = (imageWidth / 2) - .5;
 double centerY = (imageHeight / 2) - .5;
 
-//Lifecam 3000 from datasheet
-//Datasheet: https://dl2jx7zfbtwvr.cloudfront.net/specsheets/WEBC1010.pdf
-//convert degrees '68.5' to radians 
-double diagonalView = (68.5 * pi) / 180.0;
-
 //16:9 aspect ratio
 int horizontalAspect = 16;
 int verticalAspect = 9;
 
 //Reasons for using diagonal aspect is to calculate horizontal field of view.
 double diagonalAspect = hypot(horizontalAspect, verticalAspect);
+
+//Lifecam 3000 from datasheet
+//Datasheet: https://dl2jx7zfbtwvr.cloudfront.net/specsheets/WEBC1010.pdf
+//convert degrees '68.5' to radians 
+double diagonalView = atan(diagonalAspect) * 2;
 
 //Calculations: http://vrguy.blogspot.com/2013/04/converting-diagonal-field-of-view-and.html
 double horizontalView = atan(tan(diagonalView / 2) * (horizontalAspect / diagonalAspect)) * 2;
