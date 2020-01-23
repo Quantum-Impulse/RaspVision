@@ -22,7 +22,7 @@ void FilterAndProcess::Process(cv::Mat& source0){
 	//Step HSV_Threshold0:
 	//input
 	cv::Mat hsvThresholdInput = blurOutput;
-	double hsvThresholdHue[] = {142.44604316546761, 180.0};
+	double hsvThresholdHue[] = {142.44604316546761, 179.0};
 	double hsvThresholdSaturation[] = {204.09172661870502, 255.0};
 	double hsvThresholdValue[] = {185.74640287769785, 255.0};
 	hsvThreshold(hsvThresholdInput, hsvThresholdHue, hsvThresholdSaturation, hsvThresholdValue, this->hsvThresholdOutput);

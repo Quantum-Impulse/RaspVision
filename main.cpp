@@ -12,6 +12,9 @@
 #include <iostream>
 #include <cmath>
 #include <filesystem>
+#include <time.h>
+#include <ratio>
+#include <chrono>
 
 #include <networktables/NetworkTableInstance.h>
 #include <vision/VisionPipeline.h>
@@ -25,6 +28,7 @@
 #include <opencv2/opencv.hpp>
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
+#include <cscore_oo.h>
 
 #include "cameraserver/CameraServer.h"
 
@@ -32,6 +36,7 @@
 
 using namespace std;
 using namespace cv;
+using namespace std::chrono;
 
 /*
    JSON format:
@@ -75,6 +80,254 @@ using namespace cv;
        ]
    }
  */
+
+//Class to examine Frames per second of camera stream
+class FPS{
+  std::chrono::steady_clock::time_point start;
+  std::chrono::steady_clock::time_point end;
+  int numFrames;
+
+  FPS(){ int numFrames = 0;  }
+  
+  std::chrono::steady_clock::time_point start(){
+     start = std::chrono::steady_clock::now();
+     return start; };
+
+  std::chrono::steady_clock::time_point stop(){
+     end = std::chrono::steady_clock::now();
+     return end; };
+
+  void update(){
+    numFrames += 1;};
+
+  auto elapsed(){
+      duration<double> time_span = duration_cast<duration<double>>(start - end);
+      return time_span.count(); };
+
+  double fps(){
+    return (numFrames / elapsed()); };
+};
+
+//class that runs separate thread for showing video
+class VideoShow{
+  //Class that continuously shows a frame using a dedicated thread.
+   cs::CvSource outputStream;
+   cv::Mat frame;
+   bool stopped = false;
+
+  VideoShow(int imgWidth, int imgHeight, frc::CameraServer cameraServer, Mat frameImg, std::string name = "stream"){
+    outputStream = cameraServer.PutVideo(name, imgHeight, imgWidth); 
+    frame = frameImg;
+  }
+
+   std::thread start(){
+     return std::thread(VideoShow::show);
+  }
+
+  void show(){
+    while (!stopped){
+      outputStream.PutFrame(frame);
+    }
+  }
+
+  void stop(){
+    stopped = true;
+  }
+
+  void notifyError(std::string error){
+    outputStream.NotifyError(error);
+  }
+
+};
+class WebcamVideoStream{
+  cs::VideoCamera webcam;
+  bool autoExpose, prevValue, stopped;
+  cv::Mat img, timestamp;
+  cs::CvSink stream;
+  std::string name;
+  WebcamVideoStream(cs::VideoCamera camera, frc::CameraServer cameraServer, int frameWidth, int frameHeight, std::string str = "WebcamVideoStream" ){
+     // initialize the video camera stream and read the first frame
+     // from the stream
+    webcam = camera;
+    //Automatically sets exposure to 0 to track tape
+    webcam.SetExposureManual(0);
+    autoExpose = false;
+    prevValue = autoExpose;
+    //Make a blank image to write on
+    img = cv::Mat(frameWidth, frameHeight, CV_8U);
+    //get the video
+    stream = cameraServer.GetVideo(camera);
+    timestamp, img = stream.GrabFrame(img); // might have to change the refresh rate for fps
+    //initialize the thread name
+    name = str;
+    //initialize the variable used to inicate if the thread should be stoped
+     stopped = false;
+  }
+  void start(){
+    //start the thread to read frames from the video stream
+    std::thread t(&WebcamVideoStream::update);
+    t.detach();
+  }
+  void update(){
+    while (true){
+      if (stopped){
+        return ;}
+      if (autoExpose){
+        webcam.SetExposureAuto();
+      }else{webcam.SetExposureManual(0);}
+      (timestamp, img) = stream.GrabFrame(img);
+    } 
+  }
+   cv::Mat read(){
+    return timestamp, img;
+  }
+  void stop(){
+    stopped = true;
+  }
+  std::string getError(){
+    return stream.GetError();
+  }
+};
+
+/////////////////////// OPENCV Processing //////////////////////////////
+//math constants
+double pi = 3.141592653; //PI
+double convertToDegress = (180.0 / pi); // convert radians to degrees 
+
+//Angles in radians
+//image size ratioed to 16:9
+int imageWidth = 256;
+int imageHeight = 144;
+
+//Center(x,y) of the image
+double centerX = (imageWidth / 2) - .5;
+double centerY = (imageHeight / 2) - .5;
+
+//16:9 aspect ratio
+int horizontalAspect = 16;
+int verticalAspect = 9;
+
+//Reasons for using diagonal aspect is to calculate horizontal field of view.
+double diagonalAspect = hypot(horizontalAspect, verticalAspect);
+
+//Lifecam 3000 from datasheet
+//Datasheet: https://dl2jx7zfbtwvr.cloudfront.net/specsheets/WEBC1010.pdf
+//convert degrees '68.5' to radians 
+double diagonalView = 68.5 * (convertToDegress);
+
+//Calculations: http://vrguy.blogspot.com/2013/04/converting-diagonal-field-of-view-and.html
+double horizontalView = atan(tan(diagonalView / 2) * (horizontalAspect / diagonalAspect)) * 2;
+double verticalView = atan(tan(diagonalView / 2) * (verticalAspect / diagonalAspect)) * 2;
+
+//Focal Length calculations : https://docs.google.com/presentation/d/1ediRsI-oR3-kwawFJZ34_ZTlQS2SDBLjZasjzZ-eXbQ/pub?start=false&loop=false&slide=id.g12c083cffa_0_165
+double H_FOCAL_LENGTH = imageWidth / (2 * tan((horizontalView / 2)));
+double V_FOCAL_LENGTH = imageHeight / (2 * tan((verticalView / 2)));
+
+// Tracked objects centroid coordinates
+int theObject[2] = { 0,0 };
+double yaw = 0, pitch = 0;
+//bounding rectangle of the object, we will use the center of this as its position
+Rect objectBoundingRectangle = Rect(0, 0, 0, 0);
+
+//Uses trig and focal length of camera to find yaw.
+//Link to further explanation : https://docs.google.com/presentation/d/1ediRsI-oR3-kwawFJZ34_ZTlQS2SDBLjZasjzZ-eXbQ/pub?start=false&loop=false&slide=id.g12c083cffa_0_298
+double calculateYaw(double pixelX, double CenterX, double hFocalLength) {
+	double yaw = convertToDegress * (atan((pixelX - CenterX) / hFocalLength));
+	return yaw; 
+}
+
+//Link to further explanation: https://docs.google.com/presentation/d/1ediRsI-oR3-kwawFJZ34_ZTlQS2SDBLjZasjzZ-eXbQ/pub?start=false&loop=false&slide=id.g12c083cffa_0_298
+double calculatePitch(double pixelY, double  CenterY, double vFocalLength) {
+	double pitch = convertToDegress * (atan((pixelY - CenterY) / vFocalLength));
+	//just stopped working have to do this:
+	//pitch *= -1.0;
+	return pitch;
+}
+
+double calculateDistance(double heightOfCamera, double heightOfTarget ,double pitch) {
+	double heightOfTargetFromCamera = heightOfTarget - heightOfCamera;
+	/*
+	// Uses trig and pitch to find distance to target
+  
+    d = distance
+    h = height between camera and target
+    a = angle = pitch
+    tan a = h/d (opposite over adjacent)
+    d = h / tan a
+                         .
+                        /|
+                       / |
+                      /  |h
+                     /a  |
+              camera -----
+                       d
+	*/
+
+	double distance = fabs(heightOfTargetFromCamera / tan((pitch* pi) / 180.0));
+	return distance;
+}
+
+void searchForMovement(Mat thresholdImage, Mat &cameraFeed) {
+	/* Notice how we use the '&' operator for the camerafeed. This is because we wish
+	 to take the values passed into the function and manipulate them, rather than just
+	 working with a copy. eg. we draw to the cameraFeed in this function which is then
+	 displayed in the main() function. */
+	bool objectDetected = false;
+	Mat temp;
+	thresholdImage.copyTo(temp);
+		// these two vectors needed for the output of findContours
+
+	vector< vector<Point>> contours;
+	vector<Vec4i> hierarchy;
+		//findContours of filtered image using openCV findCOntours function
+		//findContours(temp, contours, hierarchy, RETR_CCOMP, CHAIN_APPROX_SIMPLE); //retrieves all contours
+	findContours(temp, contours, hierarchy, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE);// retrieves external contours
+	
+		//if contours vector is not empty, we found some objects
+	if (contours.size() > 0) {
+		objectDetected = true;
+	}
+	else { objectDetected = false; }
+
+	if (objectDetected) {
+		//largest contour is found at the end of the contours vector
+		//we will simply assume that the biggest contour is what we looking for.
+		vector< vector<Point>> largestContourVec;
+		largestContourVec.push_back(contours.at( contours.size() - 1));
+		
+		//making a bounding rectagle around the largest contour then find its centriod
+		//this will be the object's final estimated position.
+		objectBoundingRectangle = boundingRect(largestContourVec.at(0));
+		int xpos = objectBoundingRectangle.x + objectBoundingRectangle.width / 2;
+		int ypos = objectBoundingRectangle.y + objectBoundingRectangle.height / 2;
+
+		//update the objects position by changing the 'theObject' array values
+		theObject[0] = xpos, theObject[1] = ypos;
+
+	}
+	//make some temp x and y varibles so we don't have to type out so much
+	int x = theObject[0];
+	int y = theObject[1];
+
+	//Calculates yaw of contour (horizontal position in degrees)
+	//
+	//Calculates pitch of contour (Vertical position in degrees)
+	//
+
+	//draw some crosshairs on the object
+	//rectangle(cameraFeed, objectBoundingRectangle, Scalar(255, 0, 0), 3, 8, 0);
+	circle(cameraFeed, Point(x, y), 20, Scalar(0, 255, 0), 2);
+	line(cameraFeed, Point(x, y), Point(x, y - 25), Scalar(0, 255, 0), 2);
+	line(cameraFeed, Point(x, y), Point(x, y + 25), Scalar(0, 255, 0), 2);
+	line(cameraFeed, Point(x, y), Point(x - 25, y), Scalar(0, 255, 0), 2);
+	line(cameraFeed, Point(x, y), Point(x + 25, y), Scalar(0, 255, 0), 2);
+	//draws the rotated rectangle contours and might have to blur to make drawing more 'rectangleish'
+	drawContours(cameraFeed, contours, 0, Scalar(255, 0, 0), 1, LINE_AA);
+	
+}
+
+////////////////// End of OPENCV process ////////////////////////////
+
 
 static const char* configFile = "/boot/frc.json";
 
@@ -245,19 +498,6 @@ cs::UsbCamera StartCamera(const CameraConfig& config) {
     server.SetConfigJson(config.streamConfig);
 
   return camera;
-  
-  // frc::CameraServer *inst;
-  // cs::UsbCamera camera{config.name, config.path};
-  // camera = inst->GetInstance()->StartAutomaticCapture();
-  // camera.SetResolution(256,144);
-  // camera.SetFPS(15);
-  // cs::CvSink cvSink = inst->GetInstance()->GetVideo();
-  // auto server = inst->StartAutomaticCapture(camera);
-  // cs::CvSource cvSink = inst->GetInstance()->PutVideo("camera", 256,144);
-  // camera.SetConfigJson(config.config);
-  // camera.SetConnectionStrategy(cs::VideoSource::kConnectionKeepOpen);
-
-
 }
 
 cs::MjpegServer StartSwitchedCamera(const SwitchedCameraConfig& config) {
@@ -306,143 +546,6 @@ class MyPipeline : public frc::VisionPipeline {
 };
 }// namespace
 
-/////////// OPENCV Processing //////////////////////////////
-//math constants
-double pi = 3.141592653; //PI
-double convertToDegress= (pi / 180.0); // convert radians to degrees 
-
-//Angles in radians
-//image size ratioed to 16:9
-int imageWidth = 256;
-int imageHeight = 144;
-
-//Center(x,y) of the image
-double centerX = (imageWidth / 2) - .5;
-double centerY = (imageHeight / 2) - .5;
-
-//16:9 aspect ratio
-int horizontalAspect = 16;
-int verticalAspect = 9;
-
-//Reasons for using diagonal aspect is to calculate horizontal field of view.
-double diagonalAspect = hypot(horizontalAspect, verticalAspect);
-
-//Lifecam 3000 from datasheet
-//Datasheet: https://dl2jx7zfbtwvr.cloudfront.net/specsheets/WEBC1010.pdf
-//convert degrees '68.5' to radians 
-double diagonalView = atan(diagonalAspect) * 2;
-
-//Calculations: http://vrguy.blogspot.com/2013/04/converting-diagonal-field-of-view-and.html
-double horizontalView = atan(tan(diagonalView / 2) * (horizontalAspect / diagonalAspect)) * 2;
-double verticalView = atan(tan(diagonalView / 2) * (verticalAspect / diagonalAspect)) * 2;
-
-//Focal Length calculations : https://docs.google.com/presentation/d/1ediRsI-oR3-kwawFJZ34_ZTlQS2SDBLjZasjzZ-eXbQ/pub?start=false&loop=false&slide=id.g12c083cffa_0_165
-double H_FOCAL_LENGTH = imageWidth / (2 * tan((horizontalView / 2)));
-double V_FOCAL_LENGTH = imageHeight / (2 * tan((verticalView / 2)));
-
-// Tracked objects centroid coordinates
-int theObject[2] = { 0,0 };
-double yaw = 0, pitch = 0;
-//bounding rectangle of the object, we will use the center of this as its position
-Rect objectBoundingRectangle = Rect(0, 0, 0, 0);
-
-//Uses trig and focal length of camera to find yaw.
-//Link to further explanation : https://docs.google.com/presentation/d/1ediRsI-oR3-kwawFJZ34_ZTlQS2SDBLjZasjzZ-eXbQ/pub?start=false&loop=false&slide=id.g12c083cffa_0_298
-double calculateYaw(double pixelX, double CenterX, double hFocalLength) {
-	double yaw = convertToDegress * (atan((pixelX - CenterX) / hFocalLength));
-	return yaw; 
-}
-
-//Link to further explanation: https://docs.google.com/presentation/d/1ediRsI-oR3-kwawFJZ34_ZTlQS2SDBLjZasjzZ-eXbQ/pub?start=false&loop=false&slide=id.g12c083cffa_0_298
-double calculatePitch(double pixelY, double  CenterY, double vFocalLength) {
-	double pitch = convertToDegress * (atan((pixelY - CenterY) / vFocalLength));
-	//just stopped working have to do this:
-	//pitch *= -1.0;
-	return pitch;
-}
-
-double calculateDistance(double heightOfCamera, double heightOfTarget ,double pitch) {
-	double heightOfTargetFromCamera = heightOfTarget - heightOfCamera;
-	/*
-	// Uses trig and pitch to find distance to target
-  
-    d = distance
-    h = height between camera and target
-    a = angle = pitch
-    tan a = h/d (opposite over adjacent)
-    d = h / tan a
-                         .
-                        /|
-                       / |
-                      /  |h
-                     /a  |
-              camera -----
-                       d
-	*/
-	double distance = fabs(heightOfTargetFromCamera / tan((pitch* pi) / 180.0));
-	return distance;
-}
-
-void searchForMovement(Mat thresholdImage, Mat &cameraFeed) {
-	/* Notice how we use the '&' operator for the camerafeed. This is because we wish
-	 to take the values passed into the function and manipulate them, rather than just
-	 working with a copy. eg. we draw to the cameraFeed in this function which is then
-	 displayed in the main() function. */
-	bool objectDetected = false;
-	Mat temp;
-	thresholdImage.copyTo(temp);
-		// these two vectors needed for the output of findContours
-
-	vector< vector<Point>> contours;
-	vector<Vec4i> hierarchy;
-		//findContours of filtered image using openCV findCOntours function
-		//findContours(temp, contours, hierarchy, RETR_CCOMP, CHAIN_APPROX_SIMPLE); //retrieves all contours
-	findContours(temp, contours, hierarchy, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE);// retrieves external contours
-	
-		//if contours vector is not empty, we found some objects
-	if (contours.size() > 0) {
-		objectDetected = true;
-	}
-	else { objectDetected = false; }
-
-	if (objectDetected) {
-		//largest contour is found at the end of the contours vector
-		//we will simply assume that the biggest contour is what we looking for.
-		vector< vector<Point>> largestContourVec;
-		largestContourVec.push_back(contours.at( contours.size() - 1));
-		
-		//making a bounding rectagle around the largest contour then find its centriod
-		//this will be the object's final estimated position.
-		objectBoundingRectangle = boundingRect(largestContourVec.at(0));
-		int xpos = objectBoundingRectangle.x + objectBoundingRectangle.width / 2;
-		int ypos = objectBoundingRectangle.y + objectBoundingRectangle.height / 2;
-
-		//update the objects position by changing the 'theObject' array values
-		theObject[0] = xpos, theObject[1] = ypos;
-
-	}
-	//make some temp x and y varibles so we don't have to type out so much
-	int x = theObject[0];
-	int y = theObject[1];
-
-	//Calculates yaw of contour (horizontal position in degrees)
-	//
-	//Calculates pitch of contour (Vertical position in degrees)
-	//
-
-	//draw some crosshairs on the object
-	//rectangle(cameraFeed, objectBoundingRectangle, Scalar(255, 0, 0), 3, 8, 0);
-	circle(cameraFeed, Point(x, y), 20, Scalar(0, 255, 0), 2);
-	line(cameraFeed, Point(x, y), Point(x, y - 25), Scalar(0, 255, 0), 2);
-	line(cameraFeed, Point(x, y), Point(x, y + 25), Scalar(0, 255, 0), 2);
-	line(cameraFeed, Point(x, y), Point(x - 25, y), Scalar(0, 255, 0), 2);
-	line(cameraFeed, Point(x, y), Point(x + 25, y), Scalar(0, 255, 0), 2);
-	//draws the rotated rectangle contours and might have to blur to make drawing more 'rectangleish'
-	drawContours(cameraFeed, contours, 0, Scalar(255, 0, 0), 1, LINE_AA);
-	
-}
-
-////////////////// End of OPENCV process ////////////////////////////
 
 
 int main(int argc, char* argv[]) {
