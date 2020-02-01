@@ -1,5 +1,8 @@
 1. godseye 4 is horrible ):
 2. godseye 7 is great (:
-3. godseye 8 is a test if classes compiled
-    1.
-4. 
+3. godseye 8 is a test if classes compiled and same thing for godseye 9
+    1. testing the first sucessful build -> works good
+4. godseye 11 is good
+5. godseye 15 is draft complete
+6. godseye 31 is the best because it works
+7.

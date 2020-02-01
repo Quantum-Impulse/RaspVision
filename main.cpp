@@ -17,8 +17,8 @@
 #include <chrono>
 
 #include <networktables/NetworkTableInstance.h>
-#include <vision/VisionPipeline.h>
-#include <vision/VisionRunner.h>
+//#include <vision/VisionPipeline.h>
+//#include <vision/VisionRunner.h>
 
 #include <wpi/StringRef.h>
 #include <wpi/json.h>
@@ -82,52 +82,52 @@ using namespace std::chrono;
  */
 
 //Class to examine Frames per second of camera stream
-class FPS{
-  std::chrono::steady_clock::time_point start;
-  std::chrono::steady_clock::time_point end;
-  int numFrames;
+// class FPS{
+//   std::chrono::steady_clock::time_point start;
+//   std::chrono::steady_clock::time_point end;
+//   int numFrames;
 
-  FPS(){ int numFrames = 0;  }
+//   FPS(){ int numFrames = 0;  }
   
-  std::chrono::steady_clock::time_point start(){
-     start = std::chrono::steady_clock::now();
-     return start; };
+//   std::chrono::steady_clock::time_point start(){
+//     start = std::chrono::steady_clock::now();
+//     return start; };
 
-  std::chrono::steady_clock::time_point stop(){
-     end = std::chrono::steady_clock::now();
-     return end; };
+//   std::chrono::steady_clock::time_point stop(){
+//      end = std::chrono::steady_clock::now();
+//      return end; };
 
-  void update(){
-    numFrames += 1;};
+//   void update(){
+//     numFrames += 1;};
 
-  auto elapsed(){
-      duration<double> time_span = duration_cast<duration<double>>(start - end);
-      return time_span.count(); };
+//   auto elapsed(){
+//       duration<double> time_span = duration_cast<duration<double>>(start - end);
+//       return time_span.count(); };
 
-  double fps(){
-    return (numFrames / elapsed()); };
-};
+//   double fps(){
+//     return (numFrames / elapsed()); };
+// };
 
 //class that runs separate thread for showing video
 class VideoShow{
+  public:
   //Class that continuously shows a frame using a dedicated thread.
    cs::CvSource outputStream;
    cv::Mat frame;
    bool stopped = false;
-
-  VideoShow(int imgWidth, int imgHeight, frc::CameraServer cameraServer, Mat frameImg, std::string name = "stream"){
-    outputStream = cameraServer.PutVideo(name, imgHeight, imgWidth); 
+   std::string name = "stream";
+  VideoShow(int imgWidth, int imgHeight, frc::CameraServer* cameraServer, Mat frameImg){
+    outputStream = cameraServer->PutVideo(name, imgHeight, imgWidth); 
     frame = frameImg;
   }
-
-   std::thread start(){
-     return std::thread(VideoShow::show);
-  }
-
+  
   void show(){
     while (!stopped){
       outputStream.PutFrame(frame);
     }
+  }
+  std::thread start(){
+    return std::thread(&VideoShow::show, this);
   }
 
   void stop(){
@@ -140,33 +140,33 @@ class VideoShow{
 
 };
 class WebcamVideoStream{
-  cs::VideoCamera webcam;
+  public:
+  cs::UsbCamera webcam;
   bool autoExpose, prevValue, stopped;
   cv::Mat img, timestamp;
   cs::CvSink stream;
-  std::string name;
-  WebcamVideoStream(cs::VideoCamera camera, frc::CameraServer cameraServer, int frameWidth, int frameHeight, std::string str = "WebcamVideoStream" ){
+  std::string str = "WebcamVideoStream";
+  WebcamVideoStream(cs::UsbCamera camera, frc::CameraServer *cameraServer, int frameWidth, int frameHeight){
      // initialize the video camera stream and read the first frame
      // from the stream
     webcam = camera;
     //Automatically sets exposure to 0 to track tape
-    webcam.SetExposureManual(0);
+    webcam.SetExposureManual(50);
     autoExpose = false;
     prevValue = autoExpose;
     //Make a blank image to write on
     img = cv::Mat(frameWidth, frameHeight, CV_8U);
     //get the video
-    stream = cameraServer.GetVideo(camera);
+    stream = cameraServer->GetVideo(camera);
     timestamp, img = stream.GrabFrame(img); // might have to change the refresh rate for fps
-    //initialize the thread name
-    name = str;
+
     //initialize the variable used to inicate if the thread should be stoped
      stopped = false;
   }
   void start(){
     //start the thread to read frames from the video stream
-    std::thread t(&WebcamVideoStream::update);
-    t.detach();
+    std::thread t(&WebcamVideoStream::update, this);
+    t.join();
   }
   void update(){
     while (true){
@@ -174,12 +174,13 @@ class WebcamVideoStream{
         return ;}
       if (autoExpose){
         webcam.SetExposureAuto();
+        webcam.SetExposureManual(50);
       }else{webcam.SetExposureManual(0);}
       (timestamp, img) = stream.GrabFrame(img);
     } 
   }
-   cv::Mat read(){
-    return timestamp, img;
+   std::pair<cv::Mat, cv::Mat> read(){
+    return std::make_pair(img, timestamp);
   }
   void stop(){
     stopped = true;
@@ -323,7 +324,7 @@ void searchForMovement(Mat thresholdImage, Mat &cameraFeed) {
 	line(cameraFeed, Point(x, y), Point(x + 25, y), Scalar(0, 255, 0), 2);
 	//draws the rotated rectangle contours and might have to blur to make drawing more 'rectangleish'
 	drawContours(cameraFeed, contours, 0, Scalar(255, 0, 0), 1, LINE_AA);
-	
+  std::cout << "vision is proccedd"<< std::endl;
 }
 
 ////////////////// End of OPENCV process ////////////////////////////
@@ -350,7 +351,6 @@ struct SwitchedCameraConfig {
 
 std::vector<CameraConfig> cameraConfigs;
 std::vector<SwitchedCameraConfig> switchedCameraConfigs;
-std::vector<cs::VideoSource> cameras;
 
 wpi::raw_ostream& ParseError() {
   return wpi::errs() << "config error in '" << configFile << "': ";
@@ -484,122 +484,91 @@ bool ReadConfig() {
   return true;
 }
 
-cs::UsbCamera StartCamera(const CameraConfig& config) {
+std::pair<frc::CameraServer*, cs::UsbCamera > StartCamera(const CameraConfig& config) {
   wpi::outs() << "Starting camera '" << config.name << "' on " << config.path
               << '\n';
-  auto inst = frc::CameraServer::GetInstance();
-  cs::UsbCamera camera{config.name, config.path};
-  auto server = inst->StartAutomaticCapture(camera);
+  frc::CameraServer* inst = frc::CameraServer::GetInstance();
+  //cs::UsbCamera camera{config.name, config.path};
+  cs::UsbCamera server = inst->StartAutomaticCapture(config.name, config.path);
 
-  camera.SetConfigJson(config.config);
-  camera.SetConnectionStrategy(cs::VideoSource::kConnectionKeepOpen);
-  
-  if (config.streamConfig.is_object())
-    server.SetConfigJson(config.streamConfig);
-
-  return camera;
+  server.SetConfigJson(config.config);
+  //camera.SetConnectionStrategy(cs::VideoSource::kConnectionKeepOpen);
+  return  std::make_pair (inst, server); 
+ } 
 }
-
-cs::MjpegServer StartSwitchedCamera(const SwitchedCameraConfig& config) {
-  wpi::outs() << "Starting switched camera '" << config.name << "' on "
-              << config.key << '\n';
-  auto server =
-      frc::CameraServer::GetInstance()->AddSwitchedCamera(config.name);
-
-  nt::NetworkTableInstance::GetDefault()
-      .GetEntry(config.key)
-      .AddListener(
-          [server](const auto& event) mutable {
-            if (event.value->IsDouble()) {
-              int i = event.value->GetDouble();
-              if (i >= 0 && i < cameras.size()) server.SetSource(cameras[i]);
-            } else if (event.value->IsString()) {
-              auto str = event.value->GetString();
-              for (int i = 0; i < cameraConfigs.size(); ++i) {
-                if (str == cameraConfigs[i].name) {
-                  server.SetSource(cameras[i]);
-                  break;
-                }
-              }
-            }
-          },
-          NT_NOTIFY_IMMEDIATE | NT_NOTIFY_NEW | NT_NOTIFY_UPDATE);
-
-  return server;
-}
-
-// example pipeline
-class MyPipeline : public frc::VisionPipeline {
- public:
-  int val = 0;
-  nt::NetworkTableInstance ntinst;
-  std::shared_ptr<NetworkTable> ntab;
-
-  MyPipeline() : ntinst(nt::NetworkTableInstance::GetDefault()){
-    ntab = ntinst.GetTable("Flash");
-  }
-
-  void Process(cv::Mat& mat) override {
-    ++val;
-    ntab->PutNumber("Frame", val);
-  } 
-};
-}// namespace
 
 
 
 int main(int argc, char* argv[]) {
+  std::cout << " stage 0" <<std::endl ;
   if (argc >= 2) configFile = argv[1];
-
+  std::cout << " stage 1" ;
   // read configuration
   if (!ReadConfig()) return EXIT_FAILURE;
-
+  
+  std::cout << " stage 2" << std::endl;
   // start NetworkTables
-  auto ntinst = nt::NetworkTableInstance::GetDefault();
-
-
+  nt::NetworkTableInstance ntinst = nt::NetworkTableInstance::GetDefault();
+  //Name of network table - this is how it communicates with robot. IMPORTANT
+  std::shared_ptr<NetworkTable> DeadEye = ntinst.GetTable("Vision5572");
+  ntinst.StartServer();
+  std::cout << " stage 3" << std::endl ;
   if (server) {
+    std::cout << " stage 4 1" << std::endl ;
     wpi::outs() << "Setting up NetworkTables server\n";
     ntinst.StartServer();
   } else {
+    std::cout << " stage 4 0" << std::endl ;
     wpi::outs() << "Setting up NetworkTables client for team " << team << '\n';
     ntinst.StartClientTeam(team);
   }
-
-  // start cameras
-  for (const auto& config : cameraConfigs)
-    cameras.emplace_back(StartCamera(config));
-
-  // start switched cameras
-  for (const auto& config : switchedCameraConfigs) StartSwitchedCamera(config);
-
-  //getting camera feed from the first camera
-  //cs::CvSink cvsink = cameras[1].GetLastFrameTime();
-
-  // start image processing on camera 0 if present
-  if (cameras.size() >= 1) {
-    std::thread([&] {
-
-      //  frc::VisionRunner<MyPipeline> runner(cameras[0], new MyPipeline(),
-      //                                       [&](MyPipeline &pipeline) {
-      //    // do something with pipeline results
-      // });
-
-      // something like this for GRIP:
-      frc::VisionRunner<grip::FilterAndProcess> runner(cameras[0], new grip::FilterAndProcess(),
-                                           [&](grip::FilterAndProcess &pipeline) {
-        //do something with pipeline results
-        //const auto& HSVimag = *pipeline.GetHsvThresholdOutput();
-        //const auto& contours = *pipeline.GetFindContoursOutput();
-        //imshow("HSV", HSVimag);
-
-
-      });
-       
-      runner.RunForever();
-    }).detach();
+  std::cout << " stage 5" << std::endl ;
+  std::vector<frc::CameraServer*> streams;
+  std::vector<cs::UsbCamera> cameras;
+  std::pair<frc::CameraServer*, cs::UsbCamera> cams;
+  //start cameras
+  std::cout << " stage 6" << std::endl ;
+  for (const auto& config : cameraConfigs){
+    std::cout << " stage 6 6" << std::endl ;
+     cams = StartCamera(config);
+     streams.push_back(cams.first);
+     cameras.push_back(cams.second);
   }
+  std::cout << streams.size() << std::endl;
+  std::cout << " stage 7" << std::endl ;
+//Get the first camera
+frc::CameraServer* webcam = streams.at(0);
+std::cout << " stage 8" << std::endl ;
+cs::UsbCamera cameraServer = cameras[0];
+std::cout << " stage 8 1" << std::endl ;
+// Start thread reading camera
+ WebcamVideoStream cap(cameraServer ,webcam , imageWidth, imageWidth);
+ std::cout << " stage 9" << std::endl ;
+ cap.start();
+std::cout << " stage 10" << std::endl ;
+// // (optional) Setup a CvSource. This will send images back to the Dashboard
+// // Allocating new images is very expensive, always try to preallocate
+cv::Mat img = cv::Mat(imageWidth, imageHeight, CV_8U);
 
-  // loop forever
-  for (;;) std::this_thread::sleep_for(std::chrono::seconds(10));
+// //Start thread outputing stream
+VideoShow streamViewer (imageWidth, imageHeight, webcam, img);
+
+std::pair<cv::Mat, cv::Mat> images;
+while(true){
+  std::cout << " stage 0" << std::endl;
+  cap.autoExpose = true;
+  images = cap.read();
+   std::cout << " stage 1" << std::endl;
+  cv::Mat imgHSV;
+  cvtColor(images.first, imgHSV, COLOR_BGR2HSV);
+  searchForMovement(imgHSV, img);
+  streamViewer.frame = img;
+  ntinst.Flush();
+}
+
+
+
+
+
+    
 }
