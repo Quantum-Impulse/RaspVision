@@ -109,6 +109,7 @@ using namespace std::chrono;
 // };
 
 //class that runs separate thread for showing video
+
 class VideoShow{
   public:
   //Class that continuously shows a frame using a dedicated thread.
@@ -137,13 +138,13 @@ class VideoShow{
   void notifyError(std::string error){
     outputStream.NotifyError(error);
   }
-
 };
+
 class WebcamVideoStream{
   public:
   cs::UsbCamera webcam;
-  bool autoExpose, prevValue, stopped;
-  cv::Mat img, timestamp;
+  bool autoExpose, stopped;
+  cv::Mat img;
   cs::CvSink stream;
   std::string str = "WebcamVideoStream";
   WebcamVideoStream(cs::UsbCamera camera, frc::CameraServer *cameraServer, int frameWidth, int frameHeight){
@@ -151,14 +152,13 @@ class WebcamVideoStream{
      // from the stream
     webcam = camera;
     //Automatically sets exposure to 0 to track tape
-    webcam.SetExposureManual(50);
+    //webcam.SetExposureManual(50);
     autoExpose = false;
-    prevValue = autoExpose;
     //Make a blank image to write on
     img = cv::Mat(frameWidth, frameHeight, CV_8U);
     //get the video
     stream = cameraServer->GetVideo(camera);
-    timestamp, img = stream.GrabFrame(img); // might have to change the refresh rate for fps
+    img = stream.GrabFrame(img); // might have to change the refresh rate for fps
 
     //initialize the variable used to inicate if the thread should be stoped
      stopped = false;
@@ -166,7 +166,7 @@ class WebcamVideoStream{
   void start(){
     //start the thread to read frames from the video stream
     std::thread t(&WebcamVideoStream::update, this);
-    t.join();
+    t.detach();
   }
   void update(){
     while (true){
@@ -174,13 +174,13 @@ class WebcamVideoStream{
         return ;}
       if (autoExpose){
         webcam.SetExposureAuto();
-        webcam.SetExposureManual(50);
-      }else{webcam.SetExposureManual(0);}
-      (timestamp, img) = stream.GrabFrame(img);
+      }
+      else{webcam.SetExposureManual(0);}
+      img = stream.GrabFrame(img);
     } 
   }
-   std::pair<cv::Mat, cv::Mat> read(){
-    return std::make_pair(img, timestamp);
+   cv::Mat read(){
+    return img;
   }
   void stop(){
     stopped = true;
@@ -500,6 +500,7 @@ std::pair<frc::CameraServer*, cs::UsbCamera > StartCamera(const CameraConfig& co
 
 
 int main(int argc, char* argv[]) {
+  
   std::cout << " stage 0" <<std::endl ;
   if (argc >= 2) configFile = argv[1];
   std::cout << " stage 1" ;
@@ -513,6 +514,7 @@ int main(int argc, char* argv[]) {
   std::shared_ptr<NetworkTable> DeadEye = ntinst.GetTable("Vision5572");
   ntinst.StartServer();
   std::cout << " stage 3" << std::endl ;
+  
   if (server) {
     std::cout << " stage 4 1" << std::endl ;
     wpi::outs() << "Setting up NetworkTables server\n";
@@ -522,10 +524,12 @@ int main(int argc, char* argv[]) {
     wpi::outs() << "Setting up NetworkTables client for team " << team << '\n';
     ntinst.StartClientTeam(team);
   }
+  
   std::cout << " stage 5" << std::endl ;
   std::vector<frc::CameraServer*> streams;
   std::vector<cs::UsbCamera> cameras;
   std::pair<frc::CameraServer*, cs::UsbCamera> cams;
+  
   //start cameras
   std::cout << " stage 6" << std::endl ;
   for (const auto& config : cameraConfigs){
@@ -534,35 +538,42 @@ int main(int argc, char* argv[]) {
      streams.push_back(cams.first);
      cameras.push_back(cams.second);
   }
+  
   std::cout << streams.size() << std::endl;
   std::cout << " stage 7" << std::endl ;
-//Get the first camera
-frc::CameraServer* webcam = streams.at(0);
-std::cout << " stage 8" << std::endl ;
-cs::UsbCamera cameraServer = cameras[0];
-std::cout << " stage 8 1" << std::endl ;
-// Start thread reading camera
- WebcamVideoStream cap(cameraServer ,webcam , imageWidth, imageWidth);
- std::cout << " stage 9" << std::endl ;
- cap.start();
-std::cout << " stage 10" << std::endl ;
-// // (optional) Setup a CvSource. This will send images back to the Dashboard
-// // Allocating new images is very expensive, always try to preallocate
-cv::Mat img = cv::Mat(imageWidth, imageHeight, CV_8U);
+  //Get the first camera
+  frc::CameraServer* webcam = streams.at(0);
+  std::cout << " stage 8" << std::endl ;
+  cs::UsbCamera cameraServer = cameras[0];
+  std::cout << " stage 8 1" << std::endl ;
+  
+  // Start thread reading camera
+  WebcamVideoStream cap(cameraServer , webcam , imageWidth, imageWidth);
+  std::cout << " stage 9" << std::endl ;
+  cap.start();
+  std::cout << " stage 10" << std::endl ;
+  // // (optional) Setup a CvSource. This will send images back to the Dashboard
+  // // Allocating new images is very expensive, always try to preallocate
+  cv::Mat img = cv::Mat(imageWidth, imageHeight, CV_8U);
 
-// //Start thread outputing stream
-VideoShow streamViewer (imageWidth, imageHeight, webcam, img);
+  // //Start thread outputing stream
+  VideoShow streamViewer (imageWidth, imageHeight, webcam, img);
+  cv::Mat image;
+  cv::Mat imgHSV =cv::Mat(imageWidth, imageHeight, CV_8U);
 
-std::pair<cv::Mat, cv::Mat> images;
-while(true){
+  while(true){
   std::cout << " stage 0" << std::endl;
-  cap.autoExpose = true;
-  images = cap.read();
-   std::cout << " stage 1" << std::endl;
-  cv::Mat imgHSV;
-  cvtColor(images.first, imgHSV, COLOR_BGR2HSV);
+  cap.autoExpose = false;
+  image = cap.read();
+  std::cout << " stage 1" << std::endl;
+  
+  std::cout << " stage 2" << std::endl;
+  cvtColor(image, imgHSV, COLOR_BGR2HSV);
+  std::cout << " stage 3" << std::endl;
   searchForMovement(imgHSV, img);
+  
   streamViewer.frame = img;
+  streamViewer.show();
   ntinst.Flush();
 }
 

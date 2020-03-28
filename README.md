@@ -12,7 +12,7 @@
 One time setup
 --------------
 
-Install the Raspbian compiler [1] and put it on your PATH.
+Install the Raspbian compiler [1] and put it on your PATH(place where you want to store the Raspbian compiler which could be anywhere so we can tell cmake to compile code with a Raspbian compiler).
 
 [1]: https://github.com/wpilibsuite/raspbian-toolchain/releases
 
