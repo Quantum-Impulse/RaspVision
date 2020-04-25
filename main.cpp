@@ -117,18 +117,21 @@ class VideoShow{
    cv::Mat frame;
    bool stopped = false;
    std::string name = "stream";
+   
   VideoShow(int imgWidth, int imgHeight, frc::CameraServer* cameraServer, Mat frameImg){
     outputStream = cameraServer->PutVideo(name, imgHeight, imgWidth); 
     frame = frameImg;
   }
   
   void show(){
-    while (!stopped){
+    if (!stopped){
       outputStream.PutFrame(frame);
     }
   }
-  std::thread start(){
-    return std::thread(&VideoShow::show, this);
+  void start(){
+    //return std::thread(&VideoShow::show, this);
+    std::thread t2(&VideoShow::show, this);
+    t2.detach();
   }
 
   void stop(){
@@ -152,10 +155,9 @@ class WebcamVideoStream{
      // from the stream
     webcam = camera;
     //Automatically sets exposure to 0 to track tape
-    //webcam.SetExposureManual(50);
+    webcam.SetExposureManual(0);
     autoExpose = false;
     //Make a blank image to write on
-    img = cv::Mat(frameWidth, frameHeight, CV_8U);
     //get the video
     stream = cameraServer->GetVideo(camera);
     img = stream.GrabFrame(img); // might have to change the refresh rate for fps
@@ -175,7 +177,9 @@ class WebcamVideoStream{
       if (autoExpose){
         webcam.SetExposureAuto();
       }
-      else{webcam.SetExposureManual(0);}
+      else{
+        webcam.SetExposureManual(0);
+        }
       img = stream.GrabFrame(img);
     } 
   }
@@ -267,6 +271,11 @@ double calculateDistance(double heightOfCamera, double heightOfTarget ,double pi
 	double distance = fabs(heightOfTargetFromCamera / tan((pitch* pi) / 180.0));
 	return distance;
 }
+
+void threshold(Mat &HSV){
+  
+}
+
 
 void searchForMovement(Mat thresholdImage, Mat &cameraFeed) {
 	/* Notice how we use the '&' operator for the camerafeed. This is because we wish
@@ -550,25 +559,28 @@ int main(int argc, char* argv[]) {
   // Start thread reading camera
   WebcamVideoStream cap(cameraServer , webcam , imageWidth, imageWidth);
   std::cout << " stage 9" << std::endl ;
+  std::cout << cap.getError() << std::endl;
   cap.start();
   std::cout << " stage 10" << std::endl ;
+  std::cout << cap.getError() << std::endl;
   // // (optional) Setup a CvSource. This will send images back to the Dashboard
   // // Allocating new images is very expensive, always try to preallocate
-  cv::Mat img = cv::Mat(imageWidth, imageHeight, CV_8U);
-
+  cv::Mat img;
   // //Start thread outputing stream
   VideoShow streamViewer (imageWidth, imageHeight, webcam, img);
-  cv::Mat image;
-  cv::Mat imgHSV =cv::Mat(imageWidth, imageHeight, CV_8U);
+  //streamViewer.start();
+  
+  cv::Mat imgHSV;
 
   while(true){
   std::cout << " stage 0" << std::endl;
-  cap.autoExpose = false;
-  image = cap.read();
+  cap.update();
+  img = cap.read();
   std::cout << " stage 1" << std::endl;
   
   std::cout << " stage 2" << std::endl;
-  cvtColor(image, imgHSV, COLOR_BGR2HSV);
+  std::cout << cap.getError() << std::endl;
+  cv::cvtColor(img, imgHSV, CV_BGR2HSV);
   std::cout << " stage 3" << std::endl;
   searchForMovement(imgHSV, img);
   
