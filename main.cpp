@@ -272,8 +272,8 @@ double calculateDistance(double heightOfCamera, double heightOfTarget ,double pi
 	return distance;
 }
 
-void threshold(Mat &HSV){
-  
+void threshold(Mat HSV, Scalar low, Scalar high, Mat& threshold){
+  inRange(HSV ,low, high, threshold);
 }
 
 
