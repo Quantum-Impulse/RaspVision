@@ -146,7 +146,7 @@ class VideoShow{
 class WebcamVideoStream{
   public:
   cs::UsbCamera webcam;
-  bool autoExpose, stopped;
+  bool autoExpose;
   cv::Mat img;
   cs::CvSink stream;
   std::string str = "WebcamVideoStream";
@@ -161,34 +161,22 @@ class WebcamVideoStream{
     //get the video
     stream = cameraServer->GetVideo(camera);
     img = stream.GrabFrame(img); // might have to change the refresh rate for fps
-
-    //initialize the variable used to inicate if the thread should be stoped
-     stopped = false;
   }
+  
   void start(){
     //start the thread to read frames from the video stream
     std::thread t(&WebcamVideoStream::update, this);
     t.detach();
   }
+
   void update(){
-    while (true){
-      if (stopped){
-        return ;}
-      if (autoExpose){
-        webcam.SetExposureAuto();
-      }
-      else{
-        webcam.SetExposureManual(0);
-        }
-      img = stream.GrabFrame(img);
-    } 
+    webcam.SetExposureManual(0);
+    img = stream.GrabFrame(img); 
   }
    cv::Mat read(){
     return img;
   }
-  void stop(){
-    stopped = true;
-  }
+
   std::string getError(){
     return stream.GetError();
   }
@@ -198,6 +186,11 @@ class WebcamVideoStream{
 //math constants
 double pi = 3.141592653; //PI
 double convertToDegress = (180.0 / pi); // convert radians to degrees 
+
+// threshold scalar values H S V respectively 
+//for tape
+Scalar tlow {44, 0, 130};
+Scalar tHigh {60, 30, 255};
 
 //Angles in radians
 //image size ratioed to 16:9
@@ -560,7 +553,7 @@ int main(int argc, char* argv[]) {
   WebcamVideoStream cap(cameraServer , webcam , imageWidth, imageWidth);
   std::cout << " stage 9" << std::endl ;
   std::cout << cap.getError() << std::endl;
-  cap.start();
+  //cap.start();
   std::cout << " stage 10" << std::endl ;
   std::cout << cap.getError() << std::endl;
   // // (optional) Setup a CvSource. This will send images back to the Dashboard
@@ -571,6 +564,7 @@ int main(int argc, char* argv[]) {
   //streamViewer.start();
   
   cv::Mat imgHSV;
+  cv::Mat imgThreshold; 
 
   while(true){
   std::cout << " stage 0" << std::endl;
@@ -581,17 +575,18 @@ int main(int argc, char* argv[]) {
   std::cout << " stage 2" << std::endl;
   std::cout << cap.getError() << std::endl;
   cv::cvtColor(img, imgHSV, CV_BGR2HSV);
-  std::cout << " stage 3" << std::endl;
-  searchForMovement(imgHSV, img);
   
-  streamViewer.frame = img;
+  std::cout << " stage 3" << std::endl;
+  threshold(imgHSV, tlow, tHigh, imgThreshold);
+  searchForMovement(imgThreshold, img);
+  std::cout << " stage 4" << std::endl;
+  
+  streamViewer.frame = imgThreshold;
   streamViewer.show();
+
+  std::cout << " stage 5" << std::endl;
   ntinst.Flush();
-}
+  std::cout << " stage 6" << std::endl;
+  }
 
-
-
-
-
-    
 }
