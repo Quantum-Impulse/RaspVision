@@ -10,8 +10,6 @@
 #include <chrono>
 
 #include <networktables/NetworkTableInstance.h>
-//#include <vision/VisionPipeline.h>
-//#include <vision/VisionRunner.h>
 
 #include <wpi/StringRef.h>
 #include <wpi/json.h>
@@ -29,6 +27,42 @@
 
 using namespace std;
 using namespace cv;
+
+ /** Notes
+   * To minimize CPU usage, the dashboard resolution should be set to the same resolution as the camera; 
+   * this allows the CameraServer to not decompress and recompress the image, 
+   * instead, it can simply forward the JPEG image received from the camera directly to the dashboard.
+   *
+   * 
+   */
+
+class CamServer{
+  public:
+  cs::CvSource* outputStream;
+  cs::CvSink* cvSink;
+  cv::Mat* frame;
+
+  bool stopped = false;
+  bool autoExpose = false;
+  std::string name = "FishEyeStream";
+
+  CamServer(
+    frc::CameraServer cameraServer,
+    cv::Mat frameImg, 
+    cs::UsbCamera camera, 
+    int imgWidth, 
+    int imgHeight)
+    {
+
+
+    };
+
+
+};
+
+
+
+
 
 class VideoShow{
   public:
