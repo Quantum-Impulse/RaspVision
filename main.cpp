@@ -525,7 +525,7 @@ int main(int argc, char* argv[]) {
      cameras.push_back(cams.second);
   }
   
-  std::cout << streams.size() << std::endl;
+  // std::cout << streams.size() << std::endl;
   std::cout << " stage 7" << std::endl ;
   //Get the first camera
   frc::CameraServer* webcam = streams.at(0);
