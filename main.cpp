@@ -142,9 +142,10 @@ class WebcamVideoStream{
     //Automatically sets exposure to 0 to track tape
     webcam.SetExposureManual(0);
     //Make a blank image to write on
+    img = cv::Mat(frameWidth, frameHeight, CV_8UC3);
     //get the video
     stream = cameraServer->GetVideo(camera);
-    img = stream.GrabFrame(img); // might have to change the refresh rate for fps
+    stream.GrabFrame(img); // might have to change the refresh rate for fps
   }
   
   void start(){
@@ -154,8 +155,8 @@ class WebcamVideoStream{
   }
 
   void update(){
-    webcam.SetExposureManual(0);
-    img = stream.GrabFrame(img); 
+    //webcam.SetExposureManual(0);
+    stream.GrabFrame(img); 
   }
    cv::Mat read(){
     return img;
@@ -542,7 +543,7 @@ int main(int argc, char* argv[]) {
   std::cout << cap.getError() << std::endl;
   // // (optional) Setup a CvSource. This will send images back to the Dashboard
   // // Allocating new images is very expensive, always try to preallocate
-  cv::Mat img;
+  cv::Mat img = cv::Mat(256, 144, CV_8U);
   // //Start thread outputing stream
   VideoShow streamViewer (imageWidth, imageHeight, webcam, img);
   //streamViewer.start();
@@ -565,7 +566,7 @@ int main(int argc, char* argv[]) {
   searchForMovement(imgThreshold, img);
   std::cout << " stage 4" << std::endl;
   
-  streamViewer.frame = imgThreshold;
+  streamViewer.frame = imgHSV;
   streamViewer.show();
 
   std::cout << " stage 5" << std::endl;
