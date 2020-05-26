@@ -81,38 +81,17 @@ using namespace std::chrono;
    }
  */
 
-//Class to examine Frames per second of camera stream
-// class FPS{
-//   std::chrono::steady_clock::time_point start;
-//   std::chrono::steady_clock::time_point end;
-//   int numFrames;
 
-//   FPS(){ int numFrames = 0;  }
-  
-//   std::chrono::steady_clock::time_point start(){
-//     start = std::chrono::steady_clock::now();
-//     return start; };
 
-//   std::chrono::steady_clock::time_point stop(){
-//      end = std::chrono::steady_clock::now();
-//      return end; };
-
-//   void update(){
-//     numFrames += 1;};
-
-//   auto elapsed(){
-//       duration<double> time_span = duration_cast<duration<double>>(start - end);
-//       return time_span.count(); };
-
-//   double fps(){
-//     return (numFrames / elapsed()); };
-// };
-
-//class that runs separate thread for showing video
+/** 
+ * class that runs separate thread for showing processed video feed of a camera source. 
+ * Many of these class objects can be create for mutiple sinks for one camera if need.
+ * 
+ */ 
 
 class VideoShow{
   public:
-  //Class that continuously shows a frame using a dedicated thread.
+
    cs::CvSource outputStream;
    cv::Mat frame;
    bool stopped = false;
@@ -143,10 +122,16 @@ class VideoShow{
   }
 };
 
+/** 
+ * This class creates the organization structure for one camera feed.
+ * It also creates a Cvsink to allow the class VideoShow to use CvSource 
+ * for image proccessing and output the proccessed image to a MjpegServer
+ */ 
+
 class WebcamVideoStream{
   public:
   cs::UsbCamera webcam;
-  bool autoExpose;
+  bool autoExpose = false;
   cv::Mat img;
   cs::CvSink stream;
   std::string str = "WebcamVideoStream";
@@ -156,7 +141,6 @@ class WebcamVideoStream{
     webcam = camera;
     //Automatically sets exposure to 0 to track tape
     webcam.SetExposureManual(0);
-    autoExpose = false;
     //Make a blank image to write on
     //get the video
     stream = cameraServer->GetVideo(camera);
