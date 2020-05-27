@@ -17,8 +17,6 @@
 #include <chrono>
 
 #include <networktables/NetworkTableInstance.h>
-//#include <vision/VisionPipeline.h>
-//#include <vision/VisionRunner.h>
 
 #include <wpi/StringRef.h>
 #include <wpi/json.h>
@@ -38,60 +36,13 @@ using namespace std;
 using namespace cv;
 using namespace std::chrono;
 
-/*
-   JSON format:
-   {
-       "team": <team number>,
-       "ntmode": <"client" or "server", "client" if unspecified>
-       "cameras": [
-           {
-               "name": <camera name>
-               "path": <path, e.g. "/dev/video0">
-               "pixel format": <"MJPEG", "YUYV", etc>   // optional
-               "width": <video mode width>              // optional
-               "height": <video mode height>            // optional
-               "fps": <video mode fps>                  // optional
-               "brightness": <percentage brightness>    // optional
-               "white balance": <"auto", "hold", value> // optional
-               "exposure": <"auto", "hold", value>      // optional
-               "properties": [                          // optional
-                   {
-                       "name": <property name>
-                       "value": <property value>
-                   }
-               ],
-               "stream": {                              // optional
-                   "properties": [
-                       {
-                           "name": <stream property name>
-                           "value": <stream property value>
-                       }
-                   ]
-               }
-           }
-       ]
-       "switched cameras": [
-           {
-               "name": <virtual camera name>
-               "key": <network table key used for selection>
-               // if NT value is a string, it's treated as a name
-               // if NT value is a double, it's treated as an integer index
-           }
-       ]
-   }
- */
-
-
 
 /** 
  * class that runs separate thread for showing processed video feed of a camera source. 
  * Many of these class objects can be create for mutiple sinks for one camera if need.
- * 
  */ 
-
 class VideoShow{
   public:
-
    cs::CvSource outputStream;
    cv::Mat frame;
    bool stopped = false;
@@ -108,7 +59,6 @@ class VideoShow{
     }
   }
   void start(){
-    //return std::thread(&VideoShow::show, this);
     std::thread t2(&VideoShow::show, this);
     t2.detach();
   }
@@ -127,7 +77,6 @@ class VideoShow{
  * It also creates a Cvsink to allow the class VideoShow to use CvSource 
  * for image proccessing and output the proccessed image to a MjpegServer
  */ 
-
 class WebcamVideoStream{
   public:
   cs::UsbCamera webcam;
@@ -173,7 +122,7 @@ double pi = 3.141592653; //PI
 double convertToDegress = (180.0 / pi); // convert radians to degrees 
 
 // threshold scalar values H S V respectively 
-//for tape
+//for tape -> NEEDS MORE TUNNING
 Scalar tlow {68, 83, 60};
 Scalar tHigh {94, 255, 255};
 
@@ -193,8 +142,9 @@ int verticalAspect = 9;
 //Reasons for using diagonal aspect is to calculate horizontal field of view.
 double diagonalAspect = hypot(horizontalAspect, verticalAspect);
 
-//Lifecam 3000 from datasheet
-//Datasheet: https://dl2jx7zfbtwvr.cloudfront.net/specsheets/WEBC1010.pdf
+//Lifecam 3000 from datasheet or Raspberry camera type G (wide view)
+//Datasheet for lifecam: https://dl2jx7zfbtwvr.cloudfront.net/specsheets/WEBC1010.pdf
+//Datasheet for RaspCam: https://www.waveshare.com/wiki/RPi_Camera_(G) or https://www.seeedstudio.com/Raspberry-Pi-Wide-Angle-Camera-Module.html
 //convert degrees '68.5' to radians 
 double diagonalView = 68.5 * (convertToDegress);
 
@@ -485,69 +435,53 @@ std::pair<frc::CameraServer*, cs::UsbCamera > StartCamera(const CameraConfig& co
 }
 
 
-
 int main(int argc, char* argv[]) {
   
-  std::cout << " stage 0" <<std::endl ;
   if (argc >= 2) configFile = argv[1];
-  std::cout << " stage 1" ;
+  
   // read configuration
   if (!ReadConfig()) return EXIT_FAILURE;
   
-  std::cout << " stage 2" << std::endl;
   // start NetworkTables
   nt::NetworkTableInstance ntinst = nt::NetworkTableInstance::GetDefault();
+  
   //Name of network table - this is how it communicates with robot. IMPORTANT
   std::shared_ptr<NetworkTable> DeadEye = ntinst.GetTable("Vision5572");
   ntinst.StartServer();
-  std::cout << " stage 3" << std::endl ;
   
   if (server) {
-    std::cout << " stage 4 1" << std::endl ;
     wpi::outs() << "Setting up NetworkTables server\n";
     ntinst.StartServer();
   } else {
-    std::cout << " stage 4 0" << std::endl ;
     wpi::outs() << "Setting up NetworkTables client for team " << team << '\n';
     ntinst.StartClientTeam(team);
   }
   
-  std::cout << " stage 5" << std::endl ;
   std::vector<frc::CameraServer*> streams;
   std::vector<cs::UsbCamera> cameras;
   std::pair<frc::CameraServer*, cs::UsbCamera> cams;
   
   //start cameras
-  std::cout << " stage 6" << std::endl ;
   for (const auto& config : cameraConfigs){
-    std::cout << " stage 6 6" << std::endl ;
      cams = StartCamera(config);
      streams.push_back(cams.first);
      cameras.push_back(cams.second);
   }
   
-  // std::cout << streams.size() << std::endl;
-  std::cout << " stage 7" << std::endl ;
   //Get the first camera
   frc::CameraServer* webcam = streams.at(0);
-  std::cout << " stage 8" << std::endl ;
   cs::UsbCamera cameraServer = cameras[0];
-  std::cout << " stage 8 1" << std::endl ;
   
   // Start thread reading camera
   WebcamVideoStream cap(cameraServer , webcam , imageWidth, imageWidth);
-  std::cout << " stage 9" << std::endl ;
-  std::cout << cap.getError() << std::endl;
-  //cap.start();
-  std::cout << " stage 10" << std::endl ;
-  std::cout << cap.getError() << std::endl;
-  // // (optional) Setup a CvSource. This will send images back to the Dashboard
-  // // Allocating new images is very expensive, always try to preallocate
-  cv::Mat img = cv::Mat(256, 144, CV_8U);
-  // //Start thread outputing stream
-  VideoShow streamViewer (imageWidth, imageHeight, webcam, img);
-  //streamViewer.start();
   
+  // (optional) Setup a CvSource. This will send images back to the Dashboard
+  // Allocating new images is very expensive, always try to preallocate
+  cv::Mat img = cv::Mat(256, 144, CV_8U);
+
+  //Start thread outputing stream
+  VideoShow streamViewer (imageWidth, imageHeight, webcam, img);
+   
   cv::Mat imgHSV;
   cv::Mat imgThreshold; 
 
