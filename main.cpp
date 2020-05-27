@@ -478,7 +478,7 @@ int main(int argc, char* argv[]) {
   // (optional) Setup a CvSource. This will send images back to the Dashboard
   // Allocating new images is very expensive, always try to preallocate
   cv::Mat img = cv::Mat(256, 144, CV_8U);
-
+  
   //Start thread outputing stream
   VideoShow streamViewer (imageWidth, imageHeight, webcam, img);
    
