@@ -174,8 +174,8 @@ double convertToDegress = (180.0 / pi); // convert radians to degrees
 
 // threshold scalar values H S V respectively 
 //for tape
-Scalar tlow {44, 0, 130};
-Scalar tHigh {60, 30, 255};
+Scalar tlow {68, 83, 60};
+Scalar tHigh {94, 255, 255};
 
 //Angles in radians
 //image size ratioed to 16:9
@@ -566,7 +566,7 @@ int main(int argc, char* argv[]) {
   searchForMovement(imgThreshold, img);
   std::cout << " stage 4" << std::endl;
   
-  streamViewer.frame = imgHSV;
+  streamViewer.frame = img;
   streamViewer.show();
 
   std::cout << " stage 5" << std::endl;
