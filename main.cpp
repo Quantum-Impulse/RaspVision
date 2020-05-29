@@ -104,7 +104,6 @@ class WebcamVideoStream{
   }
 
   void update(){
-    //webcam.SetExposureManual(0);
     stream.GrabFrame(img); 
   }
    cv::Mat read(){
@@ -123,8 +122,8 @@ double convertToDegress = (180.0 / pi); // convert radians to degrees
 
 // threshold scalar values H S V respectively 
 //for tape -> NEEDS MORE TUNNING
-Scalar tlow {68, 83, 60};
-Scalar tHigh {94, 255, 255};
+Scalar tlow {28, 0, 163};
+Scalar tHigh {149, 255, 255};
 
 //Angles in radians
 //image size ratioed to 16:9
@@ -261,7 +260,7 @@ void searchForMovement(Mat thresholdImage, Mat &cameraFeed) {
 	line(cameraFeed, Point(x, y), Point(x + 25, y), Scalar(0, 255, 0), 2);
 	//draws the rotated rectangle contours and might have to blur to make drawing more 'rectangleish'
 	drawContours(cameraFeed, contours, 0, Scalar(255, 0, 0), 1, LINE_AA);
-  std::cout << "vision is proccedd"<< std::endl;
+  //std::cout << "vision is proccedd"<< std::endl;
 }
 
 ////////////////// End of OPENCV process ////////////////////////////
@@ -471,41 +470,40 @@ int main(int argc, char* argv[]) {
   //Get the first camera
   frc::CameraServer* webcam = streams.at(0);
   cs::UsbCamera cameraServer = cameras[0];
-  
-  // Start thread reading camera
-  WebcamVideoStream cap(cameraServer , webcam , imageWidth, imageWidth);
-  
+
   // (optional) Setup a CvSource. This will send images back to the Dashboard
   // Allocating new images is very expensive, always try to preallocate
   cv::Mat img = cv::Mat(256, 144, CV_8U);
+  cv::Mat imgBlur;
+  cv::Mat imgHSV;
+  cv::Mat imgThreshold;
+   
+  // Start thread reading camera
+  WebcamVideoStream cap(cameraServer , webcam, imageWidth, imageWidth);
   
   //Start thread outputing stream
-  VideoShow streamViewer (imageWidth, imageHeight, webcam, img);
-   
-  cv::Mat imgHSV;
-  cv::Mat imgThreshold; 
+  VideoShow streamViewer (imageWidth, imageHeight, webcam, img); 
 
   while(true){
-  std::cout << " stage 0" << std::endl;
-  cap.update();
-  img = cap.read();
-  std::cout << " stage 1" << std::endl;
   
-  std::cout << " stage 2" << std::endl;
-  std::cout << cap.getError() << std::endl;
+  cap.update();
+
+  img = cap.read();
+
+  cv::GaussianBlur(img, imgBlur, cv::Size2d(5,5), 1, 1);
+  
   cv::cvtColor(img, imgHSV, CV_BGR2HSV);
   
-  std::cout << " stage 3" << std::endl;
   threshold(imgHSV, tlow, tHigh, imgThreshold);
+
   searchForMovement(imgThreshold, img);
-  std::cout << " stage 4" << std::endl;
   
   streamViewer.frame = img;
-  streamViewer.show();
 
-  std::cout << " stage 5" << std::endl;
+  streamViewer.show();
+  
   ntinst.Flush();
-  std::cout << " stage 6" << std::endl;
+  
   }
 
 }
