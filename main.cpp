@@ -1,8 +1,12 @@
 /*----------------------------------------------------------------------------*/
-/* Copyright (c) 2018 FIRST. All Rights Reserved.                             */
-/* Open Source Software - may be modified and shared by FRC teams. The code   */
-/* must be accompanied by the FIRST BSD license file in the root directory of */
-/* the project.                                                               */
+/* Copyright (c) 2018 FIRST. All Rights Reserved.                             
+/* Open Source Software - may be modified and shared by FRC teams. The code   
+/* must be accompanied by the FIRST BSD license file in the root directory of 
+/* the project.                                                               
+/*                                                                            
+/* This is meant to be used in conjuction with WPILib Raspberry Pi image: 
+/* https://github.com/wpilibsuite/FRCVision-pi-gen                                                                           */
+/*                                                                            
 /*----------------------------------------------------------------------------*/
 
 #include <cstdio>
@@ -118,7 +122,8 @@ class WebcamVideoStream{
 /////////////////////// OPENCV Processing //////////////////////////////
 //math constants
 double pi = 3.141592653; //PI
-double convertToDegress = (180.0 / pi); // convert radians to degrees 
+double convertToRadians = (pi / 180); // convert radians to degrees 
+double convertToDegrees =  (180/ pi); // convert degrees to radians
 
 // threshold scalar values H S V respectively 
 //for tape -> NEEDS MORE TUNNING
@@ -126,7 +131,7 @@ Scalar tlow {28, 0, 163};
 Scalar tHigh {149, 255, 255};
 
 //Angles in radians
-//image size ratioed to 16:9
+//image size ratio is 16:9
 int imageWidth = 256;
 int imageHeight = 144;
 
@@ -144,8 +149,8 @@ double diagonalAspect = hypot(horizontalAspect, verticalAspect);
 //Lifecam 3000 from datasheet or Raspberry camera type G (wide view)
 //Datasheet for lifecam: https://dl2jx7zfbtwvr.cloudfront.net/specsheets/WEBC1010.pdf
 //Datasheet for RaspCam: https://www.waveshare.com/wiki/RPi_Camera_(G) or https://www.seeedstudio.com/Raspberry-Pi-Wide-Angle-Camera-Module.html
-//convert degrees '68.5' to radians 
-double diagonalView = 68.5 * (convertToDegress);
+//convert degrees '68.5' or '160' to radians 
+double diagonalView = 160 * (convertToRadians);
 
 //Calculations: http://vrguy.blogspot.com/2013/04/converting-diagonal-field-of-view-and.html
 double horizontalView = atan(tan(diagonalView / 2) * (horizontalAspect / diagonalAspect)) * 2;
@@ -158,21 +163,22 @@ double V_FOCAL_LENGTH = imageHeight / (2 * tan((verticalView / 2)));
 // Tracked objects centroid coordinates
 int theObject[2] = { 0,0 };
 double yaw = 0, pitch = 0;
+
 //bounding rectangle of the object, we will use the center of this as its position
 Rect objectBoundingRectangle = Rect(0, 0, 0, 0);
 
 //Uses trig and focal length of camera to find yaw.
 //Link to further explanation : https://docs.google.com/presentation/d/1ediRsI-oR3-kwawFJZ34_ZTlQS2SDBLjZasjzZ-eXbQ/pub?start=false&loop=false&slide=id.g12c083cffa_0_298
 double calculateYaw(double pixelX, double CenterX, double hFocalLength) {
-	double yaw = convertToDegress * (atan((pixelX - CenterX) / hFocalLength));
+	double yaw = convertToDegrees * (atan((pixelX - CenterX) / hFocalLength));
 	return yaw; 
 }
 
 //Link to further explanation: https://docs.google.com/presentation/d/1ediRsI-oR3-kwawFJZ34_ZTlQS2SDBLjZasjzZ-eXbQ/pub?start=false&loop=false&slide=id.g12c083cffa_0_298
 double calculatePitch(double pixelY, double  CenterY, double vFocalLength) {
-	double pitch = convertToDegress * (atan((pixelY - CenterY) / vFocalLength));
+	double pitch = convertToDegrees * (atan((pixelY - CenterY) / vFocalLength));
 	//just stopped working have to do this:
-	//pitch *= -1.0;
+	pitch *= -1.0;
 	return pitch;
 }
 
@@ -212,15 +218,16 @@ void searchForMovement(Mat thresholdImage, Mat &cameraFeed) {
 	bool objectDetected = false;
 	Mat temp;
 	thresholdImage.copyTo(temp);
-		// these two vectors needed for the output of findContours
-
+	
+  // these two vectors needed for the output of findContours
 	vector< vector<Point>> contours;
 	vector<Vec4i> hierarchy;
-		//findContours of filtered image using openCV findCOntours function
-		//findContours(temp, contours, hierarchy, RETR_CCOMP, CHAIN_APPROX_SIMPLE); //retrieves all contours
+	
+  //findContours of filtered image using openCV findCOntours function
+	//findContours(temp, contours, hierarchy, RETR_CCOMP, CHAIN_APPROX_SIMPLE); //retrieves all contours
 	findContours(temp, contours, hierarchy, RETR_EXTERNAL, CHAIN_APPROX_SIMPLE);// retrieves external contours
 	
-		//if contours vector is not empty, we found some objects
+	//if contours vector is not empty, we found some objects
 	if (contours.size() > 0) {
 		objectDetected = true;
 	}
@@ -241,15 +248,20 @@ void searchForMovement(Mat thresholdImage, Mat &cameraFeed) {
 		//update the objects position by changing the 'theObject' array values
 		theObject[0] = xpos, theObject[1] = ypos;
 
+    //draws the rotated rectangle contours and might have to blur to make drawing more 'rectangleish'
+	  drawContours(cameraFeed, largestContourVec, -1, Scalar(255, 0, 0), 1, LINE_AA);
+
 	}
 	//make some temp x and y varibles so we don't have to type out so much
 	int x = theObject[0];
 	int y = theObject[1];
 
 	//Calculates yaw of contour (horizontal position in degrees)
-	//
+	double yaw = calculateYaw(x, centerX, H_FOCAL_LENGTH);
 	//Calculates pitch of contour (Vertical position in degrees)
-	//
+	double pitch = calculatePitch(y, centerY, V_FOCAL_LENGTH );
+
+  std::cout << " Yaw: " << yaw << std::endl << "Pitch: " << pitch << std::endl << std::endl;
 
 	//draw some crosshairs on the object
 	//rectangle(cameraFeed, objectBoundingRectangle, Scalar(255, 0, 0), 3, 8, 0);
@@ -258,9 +270,6 @@ void searchForMovement(Mat thresholdImage, Mat &cameraFeed) {
 	line(cameraFeed, Point(x, y), Point(x, y + 25), Scalar(0, 255, 0), 2);
 	line(cameraFeed, Point(x, y), Point(x - 25, y), Scalar(0, 255, 0), 2);
 	line(cameraFeed, Point(x, y), Point(x + 25, y), Scalar(0, 255, 0), 2);
-	//draws the rotated rectangle contours and might have to blur to make drawing more 'rectangleish'
-	drawContours(cameraFeed, contours, 0, Scalar(255, 0, 0), 1, LINE_AA);
-  //std::cout << "vision is proccedd"<< std::endl;
 }
 
 ////////////////// End of OPENCV process ////////////////////////////
@@ -490,7 +499,7 @@ int main(int argc, char* argv[]) {
 
   img = cap.read();
 
-  cv::GaussianBlur(img, imgBlur, cv::Size2d(5,5), 1, 1);
+  cv::GaussianBlur(img, imgBlur, cv::Size2d(7,7), 0, 0);
   
   cv::cvtColor(img, imgHSV, CV_BGR2HSV);
   
