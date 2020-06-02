@@ -93,7 +93,7 @@ class WebcamVideoStream{
      // from the stream
     webcam = camera;
     //Automatically sets exposure to 0 to track tape
-    webcam.SetExposureManual(0);
+    //webcam.SetExposureManual(0);
     //Make a blank image to write on
     img = cv::Mat(frameWidth, frameHeight, CV_8UC3);
     //get the video
@@ -505,9 +505,17 @@ int main(int argc, char* argv[]) {
   
   threshold(imgHSV, tlow, tHigh, imgThreshold);
 
+  //morphological opening (remove small holes objects from the foreground)
+		erode(imgThreshold, imgThreshold, getStructuringElement(MORPH_ELLIPSE, Size(5, 5)));
+		dilate(imgThreshold, imgThreshold, getStructuringElement(MORPH_ELLIPSE, Size(5, 5)));
+
+		//morphological closing (fill small holes in the foreground)
+		dilate(imgThreshold, imgThreshold, getStructuringElement(MORPH_ELLIPSE, Size(5, 5)));
+		erode(imgThreshold, imgThreshold, getStructuringElement(MORPH_ELLIPSE, Size(5, 5)));
+
   searchForMovement(imgThreshold, img);
   
-  streamViewer.frame = img;
+  streamViewer.frame = imgThreshold;
 
   streamViewer.show();
   
